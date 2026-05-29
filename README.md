@@ -42,9 +42,14 @@ npm run dev
 
 ## Acknowledgments
 
-This project was **inspired by and incorporates front-end code from** [fathah/hermes-desktop](https://github.com/fathah/hermes-desktop), an Electron-based Hermes desktop client by Fathah, released under the [MIT License](https://opensource.org/licenses/MIT).
+Special thanks to **[Fathah](https://github.com/fathah)** for creating the original **[hermes-desktop](https://github.com/fathah/hermes-desktop)** project.
 
-The Rust native addon back-end is a complete rewrite with a modular architecture.
+This project is a Rust back-end rewrite of the original Electron/TypeScript application:
+
+- **Front-end code** (Renderer, Preload, i18n, assets) is reused from the original project with gratitude.
+- **Back-end logic** is completely rewritten in Rust using [napi-rs](https://napi.rs/) for native performance.
+
+The original project is released under the [MIT License](https://opensource.org/licenses/MIT).
 
 ## License
 
