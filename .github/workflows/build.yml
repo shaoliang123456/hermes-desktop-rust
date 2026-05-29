@@ -14,13 +14,13 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            build_cmd: npm run build:mac
+            build_cmd: npm run build:mac -- --publish never
             artifact: dist/hermes-desktop-*.dmg
           - os: windows-latest
-            build_cmd: npm run build:win
+            build_cmd: npm run build:win -- --publish never
             artifact: dist/hermes-desktop-*.exe
           - os: ubuntu-latest
-            build_cmd: npm run build:linux
+            build_cmd: npm run build:linux -- --publish never
             artifact: dist/hermes-desktop-*.AppImage
 
     runs-on: ${{ matrix.os }}
@@ -49,6 +49,8 @@ jobs:
 
       - name: Build & package
         run: ${{ matrix.build_cmd }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
