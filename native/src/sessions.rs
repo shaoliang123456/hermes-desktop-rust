@@ -1,4 +1,3 @@
-use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use rusqlite::Connection;
 use std::fs;
@@ -37,6 +36,7 @@ fn get_db() -> napi::Result<Connection> {
 }
 
 #[napi(object)]
+#[derive(serde::Serialize)]
 pub struct CachedSession {
     pub id: String,
     pub title: String,

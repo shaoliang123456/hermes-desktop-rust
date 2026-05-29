@@ -1,6 +1,7 @@
 use napi_derive::napi;
 
 #[napi(object)]
+#[derive(serde::Deserialize)]
 pub struct Model { pub id: String, pub name: String, pub provider: String }
 
 #[napi]

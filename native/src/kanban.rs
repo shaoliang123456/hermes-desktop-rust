@@ -1,4 +1,3 @@
-use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use std::process::Command;
 
@@ -24,9 +23,9 @@ fn run_hermes(args: &[&str], profile: Option<&str>) -> napi::Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-fn kanban_cmd(sub: &str, extra: &[&str], profile: Option<String>) -> napi::Result<KanbanResponse> {
+fn kanban_cmd(sub: &str, extra: &[String], profile: Option<String>) -> napi::Result<KanbanResponse> {
     let mut args = vec!["kanban".to_string(), sub.to_string()];
-    for e in extra { args.push(e.to_string()); }
+    args.extend(extra.iter().cloned());
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     match run_hermes(&refs, profile.as_deref()) {
         Ok(json) => {

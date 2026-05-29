@@ -6,5 +6,3 @@ mod profiles;
 mod models;
 mod ssh_tunnel;
 mod sse;
-
-use napi_derive::napi;
