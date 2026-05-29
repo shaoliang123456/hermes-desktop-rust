@@ -1,3 +1,4 @@
+mod common;
 mod sessions;
 mod kanban;
 mod config;

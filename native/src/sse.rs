@@ -11,6 +11,7 @@ pub struct ParsedUsage {
 }
 
 #[napi(object)]
+#[derive(Default)]
 pub struct SseChunkResult {
     pub done: bool,
     pub has_content: bool,
@@ -47,28 +48,12 @@ pub fn parse_sse_chunk(raw: String) -> napi::Result<SseChunkResult> {
     let data = raw.trim();
 
     if data == "[DONE]" {
-        return Ok(SseChunkResult {
-            done: true,
-            has_content: false,
-            text: None,
-            tool_progress: None,
-            usage: None,
-            error: None,
-        });
+        return Ok(SseChunkResult { done: true, ..Default::default() });
     }
 
     let parsed: serde_json::Value = match serde_json::from_str(data) {
         Ok(v) => v,
-        Err(_) => {
-            return Ok(SseChunkResult {
-                done: false,
-                has_content: false,
-                text: None,
-                tool_progress: None,
-                usage: None,
-                error: None,
-            });
-        }
+        Err(_) => return Ok(SseChunkResult::default()),
     };
 
     if let Some(err) = parsed.get("error") {
@@ -76,14 +61,7 @@ pub fn parse_sse_chunk(raw: String) -> napi::Result<SseChunkResult> {
             .and_then(|m| m.as_str())
             .unwrap_or("Unknown error")
             .to_string();
-        return Ok(SseChunkResult {
-            done: false,
-            has_content: false,
-            text: None,
-            tool_progress: None,
-            usage: None,
-            error: Some(msg),
-        });
+        return Ok(SseChunkResult { error: Some(msg), ..Default::default() });
     }
 
     let usage = extract_usage(&parsed);
@@ -95,36 +73,17 @@ pub fn parse_sse_chunk(raw: String) -> napi::Result<SseChunkResult> {
     if let Some(delta) = delta {
         if let Some(content) = extract_delta_content(delta) {
             let trimmed = content.trim();
-            if trimmed.starts_with('`') && trimmed.ends_with('`') && trimmed.chars().filter(|c| *c == ' ').count() == 1 {
+            if trimmed.starts_with('`') && trimmed.ends_with('`')
+                && trimmed.chars().filter(|c| *c == ' ').count() == 1
+            {
                 let inner = trimmed.trim_matches('`');
-                return Ok(SseChunkResult {
-                    done: false,
-                    has_content: false,
-                    text: None,
-                    tool_progress: Some(inner.to_string()),
-                    usage,
-                    error: None,
-                });
+                return Ok(SseChunkResult { tool_progress: Some(inner.to_string()), usage, ..Default::default() });
             }
-            return Ok(SseChunkResult {
-                done: false,
-                has_content: true,
-                text: Some(content),
-                tool_progress: None,
-                usage,
-                error: None,
-            });
+            return Ok(SseChunkResult { has_content: true, text: Some(content), usage, ..Default::default() });
         }
     }
 
-    Ok(SseChunkResult {
-        done: false,
-        has_content: false,
-        text: None,
-        tool_progress: None,
-        usage,
-        error: None,
-    })
+    Ok(SseChunkResult { usage, ..Default::default() })
 }
 
 #[napi]

@@ -2,12 +2,17 @@ use napi_derive::napi;
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, Command};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
-lazy_static::lazy_static! {
-    static ref TUNNEL_STATE: Mutex<Option<TunnelState>> = Mutex::new(None);
-}
+const PORT_WAIT_TIMEOUT_MS: u64 = 12_000;
+const HEALTH_CHECK_TIMEOUT_MS: u64 = 20_000;
+const TEST_PORT_WAIT_TIMEOUT_MS: u64 = 15_000;
+const TEST_HEALTH_TIMEOUT_MS: u64 = 5_000;
+const STATUS_HEALTH_TIMEOUT_MS: u64 = 3_000;
+const PORT_POLL_INTERVAL_MS: u64 = 300;
+
+static TUNNEL_STATE: LazyLock<Mutex<Option<TunnelState>>> = LazyLock::new(|| Mutex::new(None));
 
 struct TunnelState {
     process: Child,
@@ -47,7 +52,7 @@ fn expand_key_path(key_path: &str) -> PathBuf {
 }
 
 fn find_free_port(preferred: u32) -> napi::Result<u32> {
-    if let Ok(_) = TcpStream::connect(format!("127.0.0.1:{preferred}")) {
+    if TcpStream::connect(format!("127.0.0.1:{preferred}")).is_err() {
         return Ok(preferred);
     }
     let listener = std::net::TcpListener::bind("127.0.0.1:0")
@@ -65,7 +70,7 @@ fn wait_for_port(port: u32, timeout_ms: u64) -> napi::Result<()> {
         if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
             return Ok(());
         }
-        std::thread::sleep(Duration::from_millis(300));
+        std::thread::sleep(Duration::from_millis(PORT_POLL_INTERVAL_MS));
     }
     Err(napi::Error::from_reason(format!("SSH tunnel port {port} not ready after {timeout_ms}ms")))
 }
@@ -115,7 +120,7 @@ pub fn ssh_tunnel_status() -> napi::Result<SshTunnelStatus> {
     let state = TUNNEL_STATE.lock().map_err(|e| napi::Error::from_reason(e.to_string()))?;
     match state.as_ref() {
         Some(s) => {
-            let active = check_health(s.local_port, 3000);
+            let active = check_health(s.local_port, STATUS_HEALTH_TIMEOUT_MS);
             Ok(SshTunnelStatus {
                 active,
                 local_port: Some(s.local_port),
@@ -130,9 +135,17 @@ pub fn ssh_tunnel_status() -> napi::Result<SshTunnelStatus> {
     }
 }
 
+fn stop_tunnel_internal() -> napi::Result<()> {
+    let mut state = TUNNEL_STATE.lock().map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    if let Some(mut s) = state.take() {
+        let _ = s.process.kill();
+    }
+    Ok(())
+}
+
 #[napi]
 pub fn ssh_tunnel_start(config: SshConfigData) -> napi::Result<SshTunnelStatus> {
-    ssh_tunnel_stop()?;
+    stop_tunnel_internal()?;
 
     let local_port = find_free_port(config.local_port)?;
     let args = build_ssh_args(&config, local_port);
@@ -150,12 +163,13 @@ pub fn ssh_tunnel_start(config: SshConfigData) -> napi::Result<SshTunnelStatus> 
         process: child,
         local_port,
     });
+    drop(state);
 
-    match wait_for_port(local_port, 12000) {
+    match wait_for_port(local_port, PORT_WAIT_TIMEOUT_MS) {
         Ok(_) => {
-            let healthy = check_health(local_port, 20000);
+            let healthy = check_health(local_port, HEALTH_CHECK_TIMEOUT_MS);
             if !healthy {
-                ssh_tunnel_stop()?;
+                stop_tunnel_internal()?;
                 return Ok(SshTunnelStatus {
                     active: false,
                     local_port: None,
@@ -169,7 +183,7 @@ pub fn ssh_tunnel_start(config: SshConfigData) -> napi::Result<SshTunnelStatus> 
             })
         }
         Err(e) => {
-            ssh_tunnel_stop()?;
+            stop_tunnel_internal()?;
             Ok(SshTunnelStatus {
                 active: false,
                 local_port: None,
@@ -181,10 +195,7 @@ pub fn ssh_tunnel_start(config: SshConfigData) -> napi::Result<SshTunnelStatus> 
 
 #[napi]
 pub fn ssh_tunnel_stop() -> napi::Result<SshTunnelStatus> {
-    let mut state = TUNNEL_STATE.lock().map_err(|e| napi::Error::from_reason(e.to_string()))?;
-    if let Some(mut s) = state.take() {
-        let _ = s.process.kill();
-    }
+    stop_tunnel_internal()?;
     Ok(SshTunnelStatus {
         active: false,
         local_port: None,
@@ -213,9 +224,9 @@ pub fn ssh_tunnel_test(config: SshConfigData) -> napi::Result<SshTestResult> {
         }
     };
 
-    let result = match wait_for_port(local_port, 15000) {
+    let result = match wait_for_port(local_port, TEST_PORT_WAIT_TIMEOUT_MS) {
         Ok(_) => {
-            let healthy = check_health(local_port, 5000);
+            let healthy = check_health(local_port, TEST_HEALTH_TIMEOUT_MS);
             SshTestResult {
                 success: healthy,
                 error: if healthy { None } else { Some("Port open but health check failed".to_string()) },
