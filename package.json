@@ -3,8 +3,8 @@
   "version": "0.5.1",
   "description": "Hermes Agent Desktop — self-improving AI assistant",
   "main": "./out/main/index.js",
-  "author": "fathah",
-  "homepage": "https://github.com/fathah/hermes-desktop",
+  "author": "Leon",
+  "homepage": "https://github.com/shaoliang123456/hermes-desktop-rust",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",

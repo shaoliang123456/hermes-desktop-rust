@@ -47,17 +47,16 @@ This project moves those hot paths into a **Rust native addon** (.node):
 
 ## Performance
 
-Benchmarks on Apple M-series, streaming a 2,000-token chat response:
+> **⚠️ Note:** The following are estimated figures based on local testing. Automated benchmarks are planned. Actual results may vary depending on hardware, network conditions, and API provider.
+
+Estimated performance on Apple M-series, streaming a 2,000-token chat response:
 
 | Metric | Original (TS) | Rust Edition | Improvement |
 |--------|--------------|--------------|-------------|
-| SSE chunk latency (p50) | 4.2 ms | 0.3 ms | **~14×** |
-| SSE chunk latency (p99) | 38 ms | 1.1 ms | **~35×** |
-| Session cache sync (1,000 sessions) | 120 ms | 18 ms | **~7×** |
-| Full-text search (FTS5, 10K messages) | 45 ms | 6 ms | **~7×** |
-| Main thread blocking during chat | 12–60 ms stalls | < 1 ms | **> 10×** |
+| SSE chunk processing latency | Lower (native parsing) | Higher (JS string split) | **Significant** |
+| Session cache sync (1,000 sessions) | Slower (sync SQLite) | Faster (off-thread rusqlite) | **Noticeable** |
+| Main thread blocking during chat | Present (GC + sync I/O) | Minimal | **Visibly smoother** |
 | Memory (idle) | ~180 MB | ~145 MB | **~20% less** |
-| Binary size (macOS .dmg) | ~95 MB | ~88 MB | **~7% smaller** |
 
 > The "typing speed" you see in chat is visibly faster — chunks arrive from the API at the same rate, but the local processing pipeline no longer introduces GC pauses or event-loop contention.
 
@@ -187,17 +186,16 @@ The original project is released under the [MIT License](https://opensource.org/
 
 ## 性能对比
 
-在 Apple M 系列芯片上，流式输出 2000 token 的聊天响应测试结果：
+> **⚠️ 注意：** 以下为基于本地测试的估算数据。自动化基准测试计划中。实际结果可能因硬件、网络条件和 API 供应商而异。
+
+在 Apple M 系列芯片上，流式输出 2000 token 的聊天响应估算：
 
 | 指标 | 原版 (TS) | Rust 版 | 提升 |
 |------|----------|---------|------|
-| SSE chunk 延迟 (p50) | 4.2 ms | 0.3 ms | **约 14 倍** |
-| SSE chunk 延迟 (p99) | 38 ms | 1.1 ms | **约 35 倍** |
-| 会话缓存同步 (1000 条) | 120 ms | 18 ms | **约 7 倍** |
-| 全文搜索 (FTS5, 1万条消息) | 45 ms | 6 ms | **约 7 倍** |
-| 聊天时主线程阻塞 | 12–60 ms 卡顿 | < 1 ms | **> 10 倍** |
+| SSE chunk 处理延迟 | 较低（原生解析） | 较高（JS 字符串处理） | **显著** |
+| 会话缓存同步 (1000 条) | 较慢（同步 SQLite） | 较快（独立线程 rusqlite） | **明显** |
+| 聊天时主线程阻塞 | 存在（GC + 同步 I/O） | 极少 | **肉眼可见更流畅** |
 | 内存占用（空闲） | ~180 MB | ~145 MB | **少约 20%** |
-| 安装包大小 (macOS .dmg) | ~95 MB | ~88 MB | **小约 7%** |
 
 > 聊天框里的"打字速度"明显更快——API 返回数据的速度不变，但本地处理管道不再引入 GC 停顿或事件循环争用。
 

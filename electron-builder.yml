@@ -46,8 +46,8 @@ linux:
     - snap
     - deb
     - rpm
-  maintainer: electronjs.org
-  vendor: Nous Research
+  maintainer: Leon
+  vendor: Leon
   category: Utility
   synopsis: Self-improving AI assistant desktop app
   description: >-
