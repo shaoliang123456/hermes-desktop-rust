@@ -5,7 +5,6 @@ target/
 *.node
 native/target/
 native/index.*
-native/package-lock.json
 .DS_Store
 .env
 *.log

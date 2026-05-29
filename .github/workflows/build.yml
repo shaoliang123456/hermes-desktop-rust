@@ -31,7 +31,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -43,10 +42,10 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Install npm dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Rust native addon
-        run: cd native && npm ci && npm run build && cd ..
+        run: cd native && npm install && npm run build && cd ..
 
       - name: Build & package
         run: ${{ matrix.build_cmd }}
