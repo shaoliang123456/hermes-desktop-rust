@@ -1,0 +1,541 @@
+import { useState, useEffect, useCallback } from "react";
+import { Plus, Trash, Search, X } from "../../assets/icons";
+import { PROVIDERS } from "../../constants";
+import { useI18n } from "../../components/useI18n";
+import BrandLogo from "../../components/common/BrandLogo";
+import { detectProviderFromUrl } from "./detect-provider";
+import { useDiscoveredModels } from "../../hooks/useDiscoveredModels";
+
+interface SavedModel {
+  id: string;
+  name: string;
+  provider: string;
+  model: string;
+  baseUrl: string;
+  createdAt: number;
+}
+
+function providerLabelKey(value: string): string {
+  return PROVIDERS.options.find((p) => p.value === value)?.label || value;
+}
+
+interface ModelsProps {
+  visible?: boolean;
+}
+
+function Models({ visible }: ModelsProps = {}): React.JSX.Element {
+  const { t } = useI18n();
+  const [models, setModels] = useState<SavedModel[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [editingModel, setEditingModel] = useState<SavedModel | null>(null);
+  const [formName, setFormName] = useState("");
+  const [formProvider, setFormProvider] = useState("openrouter");
+  const [formModel, setFormModel] = useState("");
+  const [formBaseUrl, setFormBaseUrl] = useState("");
+  const [formApiKey, setFormApiKey] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [formError, setFormError] = useState("");
+  // Whether the user has manually picked a value from the Provider dropdown
+  // for this open of the modal. While false, the dropdown follows whatever
+  // detectProviderFromUrl() infers from the Base URL field. Once the user
+  // touches the dropdown we stop overriding their choice.
+  const [providerTouched, setProviderTouched] = useState(false);
+  const [providerAutoFilled, setProviderAutoFilled] = useState(false);
+
+  function resolveCustomEnvKey(url: string): string {
+    if (!url) return "CUSTOM_API_KEY";
+    if (/openrouter\.ai/i.test(url)) return "OPENROUTER_API_KEY";
+    if (/anthropic\.com/i.test(url)) return "ANTHROPIC_API_KEY";
+    if (/openai\.com/i.test(url)) return "OPENAI_API_KEY";
+    if (/huggingface\.co/i.test(url)) return "HF_TOKEN";
+    if (/api\.groq\.com/i.test(url)) return "GROQ_API_KEY";
+    if (/api\.deepseek\.com/i.test(url)) return "DEEPSEEK_API_KEY";
+    if (/api\.together\.xyz/i.test(url)) return "TOGETHER_API_KEY";
+    if (/api\.fireworks\.ai/i.test(url)) return "FIREWORKS_API_KEY";
+    if (/api\.cerebras\.ai/i.test(url)) return "CEREBRAS_API_KEY";
+    if (/api\.mistral\.ai/i.test(url)) return "MISTRAL_API_KEY";
+    if (/api\.perplexity\.ai/i.test(url)) return "PERPLEXITY_API_KEY";
+    return "CUSTOM_API_KEY";
+  }
+
+  const loadModels = useCallback(async () => {
+    const list = await window.hermesAPI.listModels();
+    setModels(list);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadModels();
+  }, [loadModels]);
+
+  // Re-load whenever the Models pane becomes visible — entries added
+  // elsewhere (Providers save → addModel, chat picker → addModel) won't
+  // otherwise appear since the component is mounted once and kept alive.
+  useEffect(() => {
+    if (visible) loadModels();
+  }, [visible, loadModels]);
+
+  // Live model discovery for the Add/Edit modal — feeds an HTML
+  // <datalist> off the Model ID input.  Pauses when the modal is closed
+  // so we don't fire background requests on every keystroke elsewhere.
+  const isCustomForm = formProvider === "custom";
+  const [discoveryRefresh, setDiscoveryRefresh] = useState(0);
+  const discovery = useDiscoveredModels({
+    provider: formProvider,
+    baseUrl: isCustomForm ? formBaseUrl : undefined,
+    apiKey: formApiKey || undefined,
+    enabled: showModal && formProvider !== "auto",
+    refreshToken: discoveryRefresh,
+  });
+  const modelDiscoveryListId = "models-modal-discovery";
+
+  function openAddModal(): void {
+    setEditingModel(null);
+    setFormName("");
+    setFormProvider("openrouter");
+    setFormModel("");
+    setFormBaseUrl("");
+    setFormApiKey("");
+    setShowApiKey(false);
+    setFormError("");
+    setProviderTouched(false);
+    setProviderAutoFilled(false);
+    setShowModal(true);
+  }
+
+  function openEditModal(m: SavedModel): void {
+    setEditingModel(m);
+    setFormName(m.name);
+    setFormProvider(m.provider);
+    setFormModel(m.model);
+    setFormBaseUrl(m.baseUrl);
+    setFormApiKey("");
+    setShowApiKey(false);
+    setFormError("");
+    // Editing an existing entry — respect the saved provider, don't auto-overwrite it.
+    setProviderTouched(true);
+    setProviderAutoFilled(false);
+    setShowModal(true);
+  }
+
+  function closeModal(): void {
+    setShowModal(false);
+    setEditingModel(null);
+    setFormError("");
+    setProviderTouched(false);
+    setProviderAutoFilled(false);
+  }
+
+  // Auto-detect provider from base URL while the modal is open and the user
+  // hasn't manually picked a provider yet. Detection runs on every URL
+  // change so backspacing the URL also clears the auto-fill flag.
+  useEffect(() => {
+    if (!showModal || providerTouched) {
+      if (!showModal) setProviderAutoFilled(false);
+      return;
+    }
+    const detected = detectProviderFromUrl(formBaseUrl);
+    if (detected && detected !== formProvider) {
+      setFormProvider(detected);
+      setProviderAutoFilled(true);
+    } else if (!detected && providerAutoFilled) {
+      // URL no longer matches; drop the badge but keep whatever's selected.
+      setProviderAutoFilled(false);
+    }
+  }, [
+    formBaseUrl,
+    showModal,
+    providerTouched,
+    formProvider,
+    providerAutoFilled,
+  ]);
+
+  async function handleSave(): Promise<void> {
+    const name = formName.trim();
+    const model = formModel.trim();
+    if (!name || !model) {
+      setFormError(t("models.nameRequired"));
+      return;
+    }
+    setFormError("");
+
+    if (editingModel) {
+      // Detect whether this edit is hitting the *currently active* model
+      // before the library write — if it is, the user's intent is to
+      // update that active configuration too. Without this sync, edits
+      // to the active model only land in `models.json` and the next chat
+      // still uses the stale `model:` block in `config.yaml` (e.g. with
+      // a stale `base_url` from a previous selection). The user has to
+      // open Chat, switch model away, switch back — and only that round
+      // trip refreshes `config.yaml`. Library edits should "take" on
+      // the active configuration when the entry being edited IS the
+      // active one.
+      const activeBefore = await window.hermesAPI.getModelConfig();
+      const editedWasActive =
+        activeBefore.provider === editingModel.provider &&
+        activeBefore.model === editingModel.model;
+
+      await window.hermesAPI.updateModel(editingModel.id, {
+        name,
+        provider: formProvider,
+        model,
+        baseUrl: formBaseUrl.trim(),
+      });
+
+      // Mirror the new values into config.yaml when this edit affects
+      // the active model. The empty-baseUrl case is handled by
+      // setModelConfig itself (substitutes the canonical URL for
+      // built-in providers — see `provider-registry.ts`).
+      if (editedWasActive) {
+        const effectiveBaseUrl =
+          formProvider === "custom" ? formBaseUrl.trim() : "";
+        await window.hermesAPI.setModelConfig(
+          formProvider,
+          model,
+          effectiveBaseUrl,
+        );
+      }
+    } else {
+      await window.hermesAPI.addModel(
+        name,
+        formProvider,
+        model,
+        formBaseUrl.trim(),
+      );
+    }
+
+    if (formApiKey.trim() && formProvider === "custom") {
+      const envKey = resolveCustomEnvKey(formBaseUrl.trim());
+      await window.hermesAPI.setEnv(envKey, formApiKey.trim());
+    }
+
+    closeModal();
+    await loadModels();
+  }
+
+  async function handleDelete(id: string): Promise<void> {
+    await window.hermesAPI.removeModel(id);
+    setConfirmDelete(null);
+    await loadModels();
+  }
+
+  const filtered = models.filter((m) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      m.name.toLowerCase().includes(q) ||
+      m.model.toLowerCase().includes(q) ||
+      m.provider.toLowerCase().includes(q)
+    );
+  });
+
+  if (loading) {
+    return (
+      <div className="settings-container">
+        <h1 className="settings-header">{t("models.title")}</h1>
+        <div className="models-loading">
+          <div className="loading-spinner" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-container">
+      <div className="models-header">
+        <div>
+          <h1 className="settings-header models-title-tight">
+            {t("models.title")}
+          </h1>
+          <p className="models-subtitle">{t("models.subtitle")}</p>
+        </div>
+        <button className="btn btn-primary btn-sm" onClick={openAddModal}>
+          <Plus size={14} />
+          {t("models.addModel")}
+        </button>
+      </div>
+
+      {models.length > 0 && (
+        <div className="models-search">
+          <Search size={14} />
+          <input
+            className="models-search-input"
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("models.searchPlaceholder")}
+          />
+        </div>
+      )}
+
+      {filtered.length === 0 ? (
+        <div className="models-empty">
+          {models.length === 0 ? (
+            <>
+              <p className="models-empty-text">{t("models.empty")}</p>
+              <p className="models-empty-hint">{t("models.emptyHint")}</p>
+            </>
+          ) : (
+            <p className="models-empty-text">{t("models.noMatch")}</p>
+          )}
+        </div>
+      ) : (
+        <div className="models-grid">
+          {filtered.map((m) => (
+            <div
+              key={m.id}
+              className="models-card"
+              onClick={() => openEditModal(m)}
+            >
+              <div className="models-card-header">
+                <div className="models-card-title">
+                  <BrandLogo
+                    provider={m.provider}
+                    modelId={m.model}
+                    size={20}
+                  />
+                  <div className="models-card-name">{m.name}</div>
+                </div>
+                <span className="models-card-provider">
+                  {t(providerLabelKey(m.provider))}
+                </span>
+              </div>
+              <div className="models-card-model">{m.model}</div>
+              {m.baseUrl && <div className="models-card-url">{m.baseUrl}</div>}
+              <div className="models-card-footer">
+                {confirmDelete === m.id ? (
+                  <div
+                    className="models-card-confirm"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span>{t("models.deleteConfirm")}</span>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-danger-text"
+                      onClick={() => handleDelete(m.id)}
+                    >
+                      {t("models.yes")}
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setConfirmDelete(null)}
+                    >
+                      {t("models.no")}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="btn-ghost models-card-delete"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDelete(m.id);
+                    }}
+                    title={t("models.deleteModelTitle")}
+                  >
+                    <Trash size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showModal && (
+        <div className="models-modal-overlay" onClick={closeModal}>
+          <div className="models-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="models-modal-header">
+              <h2 className="models-modal-title">
+                {editingModel ? t("models.editModel") : t("models.addModel")}
+              </h2>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={closeModal}
+                aria-label={t("common.close")}
+                title={t("common.close")}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="models-modal-body">
+              <div className="models-modal-field">
+                <label className="models-modal-label">
+                  {t("models.displayName")}
+                </label>
+                <input
+                  className="input"
+                  type="text"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder={t("models.namePlaceholder")}
+                  autoFocus
+                />
+              </div>
+
+              <div className="models-modal-field">
+                <label
+                  className="models-modal-label"
+                  htmlFor="model-form-provider"
+                >
+                  {t("common.provider")}
+                  {providerAutoFilled && !providerTouched && (
+                    <span className="models-modal-auto-badge">
+                      &nbsp;· auto-detected from base URL
+                    </span>
+                  )}
+                </label>
+                <select
+                  id="model-form-provider"
+                  className="input"
+                  value={formProvider}
+                  onChange={(e) => {
+                    setFormProvider(e.target.value);
+                    setProviderTouched(true);
+                    setProviderAutoFilled(false);
+                  }}
+                  aria-label={t("common.provider")}
+                >
+                  {PROVIDERS.options.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {t(p.label)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="models-modal-field">
+                <label className="models-modal-label">
+                  {t("models.modelId")}
+                </label>
+                <div className="settings-model-row">
+                  <input
+                    className="input"
+                    type="text"
+                    value={formModel}
+                    onChange={(e) => setFormModel(e.target.value)}
+                    placeholder={t("models.modelIdPlaceholder")}
+                    list={
+                      discovery.models.length > 0
+                        ? modelDiscoveryListId
+                        : undefined
+                    }
+                    autoComplete="off"
+                  />
+                  {discovery.status !== "unsupported" &&
+                    discovery.status !== "idle" && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setDiscoveryRefresh((n) => n + 1)}
+                        disabled={discovery.status === "loading"}
+                        title={t("settings.refreshModels")}
+                      >
+                        ↻
+                      </button>
+                    )}
+                </div>
+                {discovery.models.length > 0 && (
+                  <datalist id={modelDiscoveryListId}>
+                    {discovery.models.map((m) => {
+                      // Surface free vs paid in the autocomplete —
+                      // Nous Portal flags this in its catalog (#367).
+                      // The browser's datalist renders the `label`
+                      // attribute as a grey suffix next to the value.
+                      const isFree = discovery.freeModels?.includes(m);
+                      return (
+                        <option
+                          key={m}
+                          value={m}
+                          label={isFree ? t("models.freeBadge") : undefined}
+                        />
+                      );
+                    })}
+                  </datalist>
+                )}
+                {discovery.status !== "idle" &&
+                  discovery.status !== "unsupported" && (
+                    <span className="models-modal-hint">
+                      {discovery.status === "loading"
+                        ? t("settings.discoveringModels")
+                        : discovery.status === "ok"
+                          ? t("settings.discoveredCount", {
+                              count: discovery.models.length,
+                            })
+                          : discovery.status === "no-key"
+                            ? t("settings.discoveryNoKey")
+                            : discovery.status === "error"
+                              ? t("settings.discoveryError")
+                              : ""}
+                    </span>
+                  )}
+              </div>
+
+              <div className="models-modal-field">
+                <label className="models-modal-label">
+                  {t("common.baseUrl")} ({t("common.optional")})
+                </label>
+                <input
+                  className="input"
+                  type="text"
+                  value={formBaseUrl}
+                  onChange={(e) => setFormBaseUrl(e.target.value)}
+                  placeholder={t("models.baseUrlPlaceholder")}
+                />
+                <span className="models-modal-hint">
+                  {t("models.customProviderHint")}
+                </span>
+              </div>
+
+              {formProvider === "custom" && (
+                <div className="models-modal-field">
+                  <label className="models-modal-label">
+                    {t("models.apiKeyLabel")} ({t("common.optional")})
+                  </label>
+                  <div className="setup-input-group">
+                    <input
+                      className="input"
+                      type={showApiKey ? "text" : "password"}
+                      value={formApiKey}
+                      onChange={(e) => setFormApiKey(e.target.value)}
+                      placeholder="sk-..."
+                    />
+                    <button
+                      className="setup-toggle-visibility"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      type="button"
+                    >
+                      {showApiKey ? t("common.hide") : t("common.show")}
+                    </button>
+                  </div>
+                  <span className="models-modal-hint">
+                    {t("models.apiKeyHint")}
+                  </span>
+                </div>
+              )}
+
+              {formError && <div className="models-error">{formError}</div>}
+            </div>
+
+            <div className="models-modal-footer">
+              <button className="btn btn-secondary btn-sm" onClick={closeModal}>
+                {t("common.cancel")}
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={handleSave}>
+                {editingModel ? t("models.update") : t("models.addModel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default Models;

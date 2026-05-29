@@ -1,0 +1,10 @@
+node_modules/
+dist/
+target/
+*.node
+native/target/
+native/index.*
+.DS_Store
+.env
+*.log
+*.eslintcache

@@ -1,0 +1,15 @@
+{
+  "name": "hermes-native",
+  "version": "0.1.0",
+  "napi": {
+    "name": "hermes-native",
+    "triples": {}
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2"
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build-debug": "napi build --platform"
+  }
+}
