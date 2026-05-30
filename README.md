@@ -163,7 +163,6 @@ All features from the original [hermes-desktop](https://github.com/fathah/hermes
 - **Memory system** — view/edit entries, discoverable providers
 - **16 messaging gateways**
 - **Scheduled tasks** — cron job builder with delivery targets
-- **Kanban board** — task management for multi-agent workflows
 - **i18n** — EN, ZH-CN, ZH-TW, JA, KO, ES, PT-BR, PT-PT, ID
 - **Auto-updater** via electron-updater
 
