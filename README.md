@@ -141,16 +141,6 @@ npm run build:win      # Windows .exe
 npm run build:linux    # Linux AppImage / .deb
 ```
 
-### Release
-
-```bash
-./release.sh patch    # 0.5.2 → 0.5.3
-./release.sh minor    # 0.5.2 → 0.6.0
-./release.sh major    # 0.5.2 → 1.0.0
-```
-
-This automatically bumps `package.json` version, creates a git tag, and pushes to trigger multi-platform CI builds.
-
 ## Features
 
 All features from the original [hermes-desktop](https://github.com/fathah/hermes-desktop) are preserved:
@@ -321,16 +311,6 @@ npm run build:win      # Windows .exe
 npm run build:linux    # Linux AppImage / .deb
 ```
 
-### 发版
-
-```bash
-./release.sh patch    # 0.5.2 → 0.5.3
-./release.sh minor    # 0.5.2 → 0.6.0
-./release.sh major    # 0.5.2 → 1.0.0
-```
-
-自动更新 `package.json` 版本号、创建 git tag、推送触发多平台 CI 构建。
-
 ## 功能特性
 
 原版 [hermes-desktop](https://github.com/fathah/hermes-desktop) 的所有功能完整保留：
@@ -343,7 +323,6 @@ npm run build:linux    # Linux AppImage / .deb
 - **记忆系统** — 查看/编辑条目、可发现提供者
 - **16 个消息网关**
 - **定时任务** — Cron 调度器，支持多种投递目标
-- **看板** — 多 Agent 工作流任务管理
 - **国际化** — EN、ZH-CN、ZH-TW、JA、KO、ES、PT-BR、PT-PT、ID
 - **自动更新** — 通过 electron-updater
 
